@@ -37,12 +37,9 @@ import os
 from datetime import datetime
 
 
-# ─────────────────────────────────────────────
-# Configuration
-# ─────────────────────────────────────────────
 
 MODEL = "claude-sonnet-4-20250514"
-MAX_AGENT_TURNS = 15  # Safety limit on autonomous loop iterations
+MAX_AGENT_TURNS = 15  
 
 SYSTEM_PROMPT = """You are a global health research agent specializing in infectious disease 
 economics and policy, particularly in low- and middle-income countries (LMICs).
@@ -142,21 +139,18 @@ def get_user_input():
     print("\n  This agent will autonomously research a global health")
     print("  topic and produce a structured brief with knowledge gaps.\n")
 
-    # Country input
     print("-" * 40)
     country = input("  Country or region to research:\n  > ").strip()
     if not country:
         country = "Sub-Saharan Africa"
         print(f"  (defaulting to: {country})")
 
-    # Disease input
     print()
     disease = input("  Disease or health topic:\n  > ").strip()
     if not disease:
         disease = "Malaria"
         print(f"  (defaulting to: {disease})")
 
-    # Focus area
     print("\n  Research focus area:")
     print("    1. Economic impact & costs")
     print("    2. Policy & governance")
@@ -174,7 +168,6 @@ def get_user_input():
     }
     focus = focus_map.get(focus_choice, focus_map["5"])
 
-    # Additional context
     print()
     additional = input(
         "  Any specific questions or context? (Enter to skip):\n  > "
@@ -192,7 +185,6 @@ def run_agent(client, country, disease, focus, additional_context=""):
     it has enough information to produce its final output.
     """
 
-    # Construct the initial research request
     user_message = f"""Please research the following topic autonomously:
 
 **Country/Region:** {country}
@@ -224,27 +216,13 @@ angles before synthesizing."""
 
     messages = [{"role": "user", "content": user_message}]
 
-    # Web search tool — this is what makes the agent capable of
-    # gathering real-time information autonomously
     tools = [{"type": "web_search_20250305", "name": "web_search", "max_uses": 20}]
 
     turn_count = 0
     search_count = 0
     final_output = ""
 
-    # ─── THE AGENTIC LOOP ─────────────────────────────────────
-    # This is the key architectural pattern that makes this "agentic":
-    #
-    # 1. We send a message to Claude
-    # 2. Claude decides what to do (search, think, or produce output)
-    # 3. If Claude searched, we feed results back and loop to step 1
-    # 4. Claude autonomously decides when to stop searching
-    # 5. Loop ends when Claude produces its final brief
-    #
-    # At no point does a human choose what to search for or when
-    # to stop — the agent handles all decision-making.
-    # ───────────────────────────────────────────────────────────
-
+   
     while turn_count < MAX_AGENT_TURNS:
         turn_count += 1
 
@@ -260,7 +238,6 @@ angles before synthesizing."""
             print(f"\n  ERROR: API call failed - {e}")
             break
 
-        # Process the response — extract text and track searches
         assistant_content = response.content
         full_text = ""
 
@@ -273,7 +250,6 @@ angles before synthesizing."""
                     query = block.input.get("query", "unknown")
                     print(f"  [Search #{search_count}] \"{query}\"")
 
-        # Show brief thinking snippets so user sees progress
         for line in full_text.split("\n"):
             line = line.strip()
             if (
@@ -287,12 +263,10 @@ angles before synthesizing."""
             ):
                 preview = line[:120] + "..." if len(line) > 120 else line
                 print(f"  [Thinking] {preview}")
-                break  # Just show one line per turn
+                break 
 
-        # Add assistant response to conversation history
         messages.append({"role": "assistant", "content": assistant_content})
 
-        # Check if the agent produced its final brief
         if "---END RESEARCH BRIEF---" in full_text:
             start = full_text.find("---BEGIN RESEARCH BRIEF---")
             end = full_text.find("---END RESEARCH BRIEF---") + len(
@@ -305,7 +279,6 @@ angles before synthesizing."""
             print(f"\n  Agent completed after {search_count} autonomous searches.")
             break
 
-        # If the agent decided to stop (end_turn), collect what we have
         if response.stop_reason == "end_turn":
             if full_text.strip():
                 final_output = full_text
@@ -314,7 +287,6 @@ angles before synthesizing."""
 
     else:
         print(f"\n  Agent reached safety limit ({MAX_AGENT_TURNS} turns).")
-        # Grab the last text output
         for msg in reversed(messages):
             if isinstance(msg.get("content"), list):
                 for block_data in msg["content"]:
@@ -342,33 +314,27 @@ def save_output(brief, country, disease):
 
 def main():
     """Main entry point."""
-    # Initialize the Anthropic client
     client = create_client()
 
-    # Get research parameters from user (the ONLY human input)
     country, disease, focus, additional = get_user_input()
 
-    # Run the autonomous agent — no human decisions from here
     brief, searches, turns = run_agent(client, country, disease, focus, additional)
 
     if not brief:
         print("\n  Agent did not produce output. Try again.\n")
         return
 
-    # Display the research brief
     print("\n" + "=" * 60)
     print("  RESEARCH BRIEF")
     print("=" * 60)
     print(brief)
 
-    # Save to file
     filename = save_output(brief, country, disease)
     print("\n" + "=" * 60)
     print(f"  Saved to: {filename}")
     print(f"  Stats:    {searches} searches, {turns} reasoning turns")
     print("=" * 60)
 
-    # Option to continue
     print()
     again = input("  Research another topic? (y/n): ").strip().lower()
     if again == "y":
